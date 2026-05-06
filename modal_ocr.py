@@ -44,19 +44,13 @@ def transliterate(text):
 
 @app.cls(image=image, gpu="T4", scaledown_window=60)
 class JavaneseOCR:
-    @modal.build()
-    def download_model(self):
-        """Download EasyOCR model during build (cached)"""
-        import easyocr
-        # Use English model as base + custom Javanese will be added later
-        self._reader = easyocr.Reader(['en'], gpu=True)
-        print("✅ EasyOCR base model cached")
-
     @modal.enter()
     def load_model(self):
-        """Load model when container starts"""
+        """Load EasyOCR model when container starts (auto-downloads first time)"""
         import easyocr
+        print("[OCR] Loading EasyOCR model...")
         self.reader = easyocr.Reader(['en'], gpu=True)
+        print("✅ EasyOCR model loaded")
 
     @web_endpoint(method="POST")
     async def ocr(self, request):
