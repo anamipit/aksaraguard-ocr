@@ -42,7 +42,7 @@ def transliterate(text):
     return ''.join(result)
 
 
-@app.cls(image=image, gpu="T4", container_idle_timeout=60)
+@app.cls(image=image, gpu="T4", scaledown_window=60)
 class JavaneseOCR:
     @modal.build()
     def download_model(self):
