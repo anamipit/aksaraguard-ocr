@@ -2,11 +2,12 @@
 AksaraGuard AI — Javanese OCR on Modal GPU
 ===========================================
 Modal SDK v0.73+ (latest 2025 API)
-Python 3.11
 
 Deploy: modal deploy modal_ocr.py
 Test:   curl -F "image=@manuscript.jpg" https://YOUR--aksaraguard-ocr-ocr.modal.run
 """
+from __future__ import annotations  # Defer annotation evaluation
+
 import modal
 
 app = modal.App("aksaraguard-ocr")
@@ -24,21 +25,28 @@ image = (
     )
 )
 
+# ── Health check ────────────────────────────
+@app.function(image=image, scaledown_window=60)
+@modal.fastapi_endpoint(method="GET")
+def health():
+    return {"status": "ok", "engine": "easyocr-gpu", "gpu": "T4"}
+
 
 # ── OCR endpoint ────────────────────────────
+# Modal's fastapi_endpoint auto-injects fastapi.Request
+# Use raw Request to manually parse multipart form data
 @app.function(image=image, gpu="T4", scaledown_window=120)
 @modal.fastapi_endpoint(method="POST")
-async def ocr(request):  # FastAPI Request object injected automatically
+async def ocr(request: "fastapi.Request"):  # string annotation — resolved by fastapi_endpoint
     """
     POST / — Process Javanese manuscript image
     Upload: multipart/form-data with "image" field
-    Returns: { original, transliteration, confidence, blocks, engine, processing_time_ms }
     """
     import io, time
     import easyocr
     from PIL import Image
 
-    # Parse uploaded file from request
+    # Parse uploaded file from multipart form
     form = await request.form()
     img_field = form.get("image")
     if img_field is None:
@@ -53,20 +61,18 @@ async def ocr(request):  # FastAPI Request object injected automatically
     img.save(buf, format='PNG')
     buf.seek(0)
 
-    # Run EasyOCR on GPU
-    print("[OCR] Loading EasyOCR + running GPU recognition...")
+    print("[OCR] Loading EasyOCR + GPU recognition...")
     start = time.time()
     reader = easyocr.Reader(['en'], gpu=True)
 
     try:
         results = reader.readtext(buf.getvalue())
     except Exception as e:
-        print(f"[OCR] Error during recognition: {e}")
+        print(f"[OCR] Error: {e}")
         results = []
 
     elapsed = time.time() - start
 
-    # Build response blocks
     blocks = []
     for bbox, text, conf in results:
         blocks.append({
@@ -78,7 +84,6 @@ async def ocr(request):  # FastAPI Request object injected automatically
     original = " ".join(b["text"] for b in blocks)
     avg_conf = sum(b["confidence"] for b in blocks) / len(blocks) if blocks else 0
 
-    # Simple Javanese→Latin mapping
     java_map = {
         'ꦲ': 'ha', 'ꦤ': 'na', 'ꦕ': 'ca', 'ꦫ': 'ra', 'ꦏ': 'ka',
         'ꦢ': 'da', 'ꦠ': 'ta', 'ꦱ': 'sa', 'ꦮ': 'wa', 'ꦭ': 'la',
@@ -106,10 +111,3 @@ async def ocr(request):  # FastAPI Request object injected automatically
         "engine": "easyocr-gpu",
         "processing_time_ms": round(elapsed * 1000),
     }
-
-
-# ── Health check ────────────────────────────
-@app.function(image=image, scaledown_window=60)
-@modal.fastapi_endpoint(method="GET")
-def health():
-    return {"status": "ok", "engine": "easyocr-gpu", "gpu": "T4"}
