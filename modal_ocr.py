@@ -20,6 +20,7 @@ image = (
         "onnxruntime-gpu",
         "pillow>=10.0",
         "numpy>=1.24",
+        "fastapi[standard]>=0.115",
     )
 )
 
